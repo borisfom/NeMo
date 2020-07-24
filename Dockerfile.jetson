@@ -20,7 +20,7 @@
 # sudo -H DOCKER_BUILDKIT=1 nvidia-docker build -f Dockerfile.jetson -t nemo
 #
 
-ARG BASE_IMAGE=ARG BASE_IMAGE=nvcr.io/nvidia/l4t-base:r32.4.3
+ARG BASE_IMAGE=nvcr.io/nvidia/l4t-base:r32.4.3
 
 
 # build an image that includes only the nemo dependencies, ensures that dependencies
@@ -70,17 +70,17 @@ unzip \
 parallel \
 python3-distutils \
 python3-pip \
-libhdf5-serial-dev hdf5-tools libhdf5-dev
+libhdf5-serial-dev hdf5-tools libhdf5-dev \
 libprotobuf-dev protobuf-compiler
 
 #Install PyTorch 1.5
 RUN wget https://nvidia.box.com/shared/static/3ibazbiwtkl181n95n9em3wtrca7tdzp.whl -O torch-1.5.0-cp36-cp36m-linux_aarch64.whl
-RUN apt-get install -y libopenblas-base libopenmpi-dev
+RUN apt-get install -y libopenblas-dev libopenmpi-dev
 RUN pip3 install --upgrade pip
 RUN pip3 install Cython
 RUN pip3 install numpy torch-1.5.0-cp36-cp36m-linux_aarch64.whl
 
-RUN apt-get install -y cmake build-essential pkg-config libgoogle-perftools-dev
+RUN apt-get install -y git cmake build-essential pkg-config libgoogle-perftools-dev
 RUN git clone -b v0.1.85 https://github.com/google/sentencepiece/ sentencepiece-0.1.85
 RUN cd sentencepiece-0.1.85 && mkdir build && cd build && cmake .. && make -j $(nproc) && make install && ldconfig -v && \
     cd ../python && python3 setup.py bdist_wheel && cd dist && pip3 install sentencepiece-0.1.85-cp36-cp36m-linux_aarch64.whl --verbose
@@ -89,9 +89,7 @@ RUN cd sentencepiece-0.1.85 && mkdir build && cd build && cmake .. && make -j $(
 WORKDIR /tmp/nemo
 COPY requirements/requirements_docker.txt requirements.txt
 COPY requirements . 
-RUN pip3 install --disable-pip-version-check -r requirements/requirements_docker.txt
-RUN pip3 install --disable-pip-version-check -r requirements/requirements.txt
-RUN pip3 install --disable-pip-version-check -r requirements/requirements_test.txt
+RUN pip3 install --disable-pip-version-check -r requirements.txt
 
 # copy nemo source into a scratch image
 WORKDIR /tmp/nemo-src
@@ -129,7 +127,7 @@ WORKDIR /workspace/nemo
 COPY scripts /workspace/nemo/scripts
 COPY examples /workspace/nemo/examples
 COPY tests /workspace/nemo/tests
-COPY README.rst LICENSE /workspace/nemo/
+# COPY README.rst LICENSE /workspace/nemo/
 
 RUN printf "#!/bin/bash\njupyter lab --no-browser --allow-root --ip=0.0.0.0" >> start-jupyter.sh && \
 chmod +x start-jupyter.sh

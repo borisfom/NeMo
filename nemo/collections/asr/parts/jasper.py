@@ -124,8 +124,6 @@ class StatsPoolLayer(nn.Module):
 
 
 class MaskedConv1d(nn.Module):
-    __constants__ = ["use_conv_mask", "real_out_channels", "heads"]
-
     def __init__(
         self,
         in_channels,
@@ -196,6 +194,7 @@ class MaskedConv1d(nn.Module):
             lens = self.get_seq_len(lens)
 
         sh = x.shape
+        
         if self.heads != -1:
             x = x.view(-1, self.heads, sh[-1])
 
@@ -315,8 +314,6 @@ class SqueezeExcite(nn.Module):
 
 
 class JasperBlock(nn.Module):
-    __constants__ = ["conv_mask", "separable", "residual_mode", "res", "mconv"]
-
     def __init__(
         self,
         inplanes,
@@ -608,7 +605,7 @@ class JasperBlock(nn.Module):
         layers = [activation, nn.Dropout(p=drop_prob)]
         return layers
 
-    def forward(self, input_: Tuple[List[Tensor], Optional[Tensor]]):
+    def forward(self, input_: Tuple[List[Tensor], Optional[Tensor]]) -> Tuple[List[Tensor], Optional[Tensor]]:
         # type: (Tuple[List[Tensor], Optional[Tensor]]) -> Tuple[List[Tensor], Optional[Tensor]] # nopep8
         lens_orig = None
         xs = input_[0]
@@ -617,6 +614,7 @@ class JasperBlock(nn.Module):
 
         # compute forward convolutions
         out = xs[-1]
+        print (out.size())
 
         lens = lens_orig
         for i, l in enumerate(self.mconv):
@@ -657,3 +655,40 @@ class JasperBlock(nn.Module):
             return xs + [out], lens
 
         return [out], lens
+
+    def infer(self, input_: List[Tensor]):
+        xs = input_[0]
+
+        # compute forward convolutions
+        out = xs[-1]
+
+        for l in self.mconv:
+            out = l(out)
+
+        # compute the residuals
+        if self.res is not None:
+            for i, layer in enumerate(self.res):
+                res_out = xs[i]
+                for res_layer in layer:
+                    res_out = res_layer(res_out)
+
+                if self.residual_mode == 'add' or self.residual_mode == 'stride_add':
+                    if PYTORCH_QUANTIZATION_AVAILABLE and self.quantize:
+                        out = out + self.residual_quantizer(res_out)
+                    elif not PYTORCH_QUANTIZATION_AVAILABLE and self.quantize:
+                        raise ImportError(
+                            "pytorch-quantization is not installed. Install from "
+                            "https://github.com/NVIDIA/TensorRT/tree/master/tools/pytorch-quantization."
+                        )
+                    else:
+                        out = out + res_out
+                else:
+                    out = torch.max(out, res_out)
+
+        # compute the output
+        out = self.mout(out)
+
+        if self.res is not None and self.dense_residual:
+            return xs + [out]
+
+        return [out]

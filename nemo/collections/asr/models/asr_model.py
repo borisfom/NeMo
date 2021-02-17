@@ -69,6 +69,6 @@ class ExportableEncDecModel(Exportable):
     def forward_for_export(self, input):
         return self.output_module(self.input_module(input))
 
-    def _prepare_for_export(self):
-        self.input_module._prepare_for_export()
-        self.output_module._prepare_for_export()
+    def _prepare_for_export(self, replace_1D_2D = False):
+        self.input_module._prepare_for_export(replace_1D_2D=replace_1D_2D)
+        self.output_module._prepare_for_export(replace_1D_2D=replace_1D_2D)

@@ -30,6 +30,7 @@ import torch
 import nemo.collections.nlp as nemo_nlp
 from nemo.core.classes import typecheck
 
+g_model = None
 
 class TestMegatron(TestCase):
     @pytest.mark.run_only_on('GPU')
@@ -38,32 +39,34 @@ class TestMegatron(TestCase):
         pretrained_lm_models = nemo_nlp.modules.get_pretrained_lm_models_list()
         self.assertTrue(len(pretrained_lm_models) > 0)
 
+    def get_pretrained_bert_345m_uncased_model(self):
+        model_name = "megatron-bert-345m-uncased"
+        global g_model
+        g_model = nemo_nlp.modules.get_lm_model(pretrained_model_name=model_name)
+        if torch.cuda.is_available():
+            g_model = g_model.cuda()
+        assert isinstance(g_model, nemo_nlp.modules.MegatronBertEncoder)
+        return g_model
+
     @pytest.mark.run_only_on('GPU')
     @pytest.mark.unit
-    def test_get_pretrained_bert_345m_uncased_model(self):
-        model_name = "megatron-bert-345m-uncased"
-        model = nemo_nlp.modules.get_lm_model(pretrained_model_name=model_name)
-        if torch.cuda.is_available():
-            model = model.cuda()
-
-        assert isinstance(model, nemo_nlp.modules.MegatronBertEncoder)
-
-        typecheck.set_typecheck_enabled(enabled=False)
-        inp = model.input_example()
-        out = model.forward(*inp)
-        typecheck.set_typecheck_enabled(enabled=True)
-        self.model = model
+    def test_ts_export(self):
+        self.get_pretrained_bert_345m_uncased_model()
+        assert g_model is not None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Generate filename in the temporary directory.
+            # Test export.
+            g_model.export(os.path.join(tmpdir, "megatron.pt"), try_script=True)
 
     @pytest.mark.run_only_on('GPU')
     @pytest.mark.unit
     @pytest.mark.skip('ONNX export is broken in PyTorch')
     def test_onnx_export(self):
-        assert self.model
+        assert g_model is not None
         with tempfile.TemporaryDirectory() as tmpdir:
             # Generate filename in the temporary directory.
             # Test export.
-            self.model.export(os.path.join(tmpdir, "megatron.onnx"))
-
+            g_model.export(os.path.join(tmpdir, "megatron.onnx"))
 
 if __name__ == "__main__":
     t = TestMegatron()

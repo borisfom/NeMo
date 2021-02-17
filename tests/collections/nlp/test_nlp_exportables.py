@@ -34,7 +34,9 @@ from nemo.collections.nlp.modules.common import (
 def classifier_export(obj):
     with tempfile.TemporaryDirectory() as tmpdir:
         filename = os.path.join(tmpdir, obj.__class__.__name__ + '.onnx')
+        ts_filename = os.path.join(tmpdir, obj.__class__.__name__ + '.pt')
         obj = obj.cuda()
+        obj.export(output=ts_filename)
         obj.export(output=filename)
 
 
@@ -91,6 +93,7 @@ class TestExportableClassifiers:
             model = IntentSlotClassificationModel(config.model, trainer=trainer)
             filename = os.path.join(tmpdir, 'isc.onnx')
             model.export(output=filename)
+            model.export(output=filename+'.pt')
             onnx_model = onnx.load(filename)
             onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
             assert onnx_model.graph.input[0].name == 'input_ids'
@@ -135,6 +138,7 @@ class TestExportableClassifiers:
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = os.path.join(tmpdir, 'ner.onnx')
             model.export(output=filename)
+            model.export(output=filename+'.pt')
             onnx_model = onnx.load(filename)
             onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
             assert onnx_model.graph.input[0].name == 'input_ids'
@@ -147,6 +151,7 @@ class TestExportableClassifiers:
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = os.path.join(tmpdir, 'puncap.onnx')
             model.export(output=filename)
+            model.export(output=filename+'.pt')
             onnx_model = onnx.load(filename)
             onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
             assert onnx_model.graph.input[0].name == 'input_ids'
@@ -159,6 +164,7 @@ class TestExportableClassifiers:
         with tempfile.TemporaryDirectory() as tmpdir:
             filename = os.path.join(tmpdir, 'qa.onnx')
             model.export(output=filename)
+            model.export(output=filename+'.pt')
             onnx_model = onnx.load(filename)
             onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
             assert onnx_model.graph.input[0].name == 'input_ids'

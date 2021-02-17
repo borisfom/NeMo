@@ -16,9 +16,10 @@ import json
 import os
 import tempfile
 from math import ceil
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Tuple
 
 import torch
+from torch import Tensor
 from omegaconf import DictConfig, OmegaConf, open_dict
 from pytorch_lightning import Trainer
 
@@ -366,7 +367,7 @@ class EncDecCTCModel(ASRModel, ExportableEncDecModel):
     @typecheck()
     def forward(
         self, input_signal=None, input_signal_length=None, processed_signal=None, processed_signal_length=None
-    ):
+    ) -> Tuple [Tensor, Tensor, Tensor]:
         has_input_signal = input_signal is not None and input_signal_length is not None
         has_processed_signal = processed_signal is not None and processed_signal_length is not None
         if (has_input_signal ^ has_processed_signal) == False:

@@ -25,31 +25,31 @@ from nemo.collections.asr.modules import ConvASRDecoder, ConvASREncoder
 class TestExportable:
     @pytest.mark.run_only_on('GPU')
     @pytest.mark.unit
-    def test_ConvASREncoder_export_to_onnx(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            encoder_instance = ConvASREncoder.from_config_dict(DictConfig(self.encoder_dict)).cuda()
-            assert isinstance(encoder_instance, ConvASREncoder)
-            filename = os.path.join(tmpdir, 'qn_encoder.onnx')
-            encoder_instance.export(output=filename)
-            onnx_model = onnx.load(filename)
-            onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
-            assert onnx_model.graph.input[0].name == 'audio_signal'
-            assert onnx_model.graph.output[0].name == 'outputs'
+    def test_EncDecCTCModel_export_to_ts(self):
+        model_config = DictConfig(
+            {
+                'preprocessor': DictConfig(self.preprocessor),
+                'encoder': DictConfig(self.encoder_dict),
+                'decoder': DictConfig(self.decoder_dict),
+            }
+        )
+        model = EncDecCTCModel(cfg=model_config).cuda()
+        filename = os.path.join(".", 'qn.pt')
+        model.export(output=filename, try_script=True)
 
-    @pytest.mark.run_only_on('GPU')
-    @pytest.mark.unit
-    def test_ConvASRDecoder_export_to_onnx(self):
-        decoder = ConvASRDecoder.from_config_dict(config=DictConfig(self.decoder_dict)).cuda()
+        
+    def test_EncDecClassificationModel_export_to_onnx(self, speech_classification_model):
+        model = speech_classification_model.train()
         with tempfile.TemporaryDirectory() as tmpdir:
-            filename = os.path.join(tmpdir, 'qn_decoder.onnx')
-            decoder.export(output=filename)
-            onnx_model = onnx.load(filename)
-            onnx.checker.check_model(onnx_model, full_check=True)  # throws when failed
-            assert onnx_model.graph.input[0].name == 'encoder_output'
-            assert onnx_model.graph.output[0].name == 'logprobs'
+            filename = os.path.join(tmpdir, 'edc.pt')
+            model.export(output=filename)
 
-    @pytest.mark.run_only_on('GPU')
-    @pytest.mark.unit
+    def test_EncDecSpeakerLabelModel_export_to_onnx(self, speaker_label_model):
+        model = speaker_label_model.train()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filename = os.path.join(tmpdir, 'sl.pt')
+            model.export(output=filename)
+
     def test_EncDecCTCModel_export_to_onnx(self):
         model_config = DictConfig(
             {
@@ -232,3 +232,8 @@ def speaker_label_model():
     )
     speaker_model = EncDecSpeakerLabelModel(cfg=modelConfig)
     return speaker_model
+
+if __name__ == "__main__":
+    t = TestExportable()
+    t.setup_method()
+    t.test_EncDecCTCModel_export_to_onnx()

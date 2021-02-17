@@ -99,7 +99,7 @@ def expand_BatchNorm1d(bn1d: nn.Module) -> Optional[nn.BatchNorm2d]:
         momentum=bn1d.momentum,
         affine=bn1d.affine,
         track_running_stats=bn1d.track_running_stats,
-    ).to(device=conv1d.weight.device, dtype=conv1d.weight.dtype)
+    ).to(device=bn1d.weight.device, dtype=bn1d.weight.dtype)
     bn_state = bn1d.state_dict()
     mod.load_state_dict(bn_state)
     return mod
@@ -195,6 +195,7 @@ def replace_modules(
             swapped = expansions[m_type](m)
             if swapped:
                 mapping[name] = swapped
+        
     logging.warning(f"Swapped {len(mapping)} modules")
     swap_modules(model, mapping)
     return model

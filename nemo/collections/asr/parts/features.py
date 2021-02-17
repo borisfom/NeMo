@@ -51,51 +51,6 @@ from nemo.utils import logging
 CONSTANT = 1e-5
 
 
-def normalize_batch(x, seq_len, normalize_type):
-    if normalize_type == "per_feature":
-        x_mean = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
-        x_std = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
-        for i in range(x.shape[0]):
-            if x[i, :, : seq_len[i]].shape[1] == 1:
-                raise ValueError(
-                    "normalize_batch with `per_feature` normalize_type received a tensor of length 1. This will result "
-                    "in torch.std() returning nan"
-                )
-            x_mean[i, :] = x[i, :, : seq_len[i]].mean(dim=1)
-            x_std[i, :] = x[i, :, : seq_len[i]].std(dim=1)
-        # make sure x_std is not zero
-        x_std += CONSTANT
-        return (x - x_mean.unsqueeze(2)) / x_std.unsqueeze(2)
-    elif normalize_type == "all_features":
-        x_mean = torch.zeros(seq_len.shape, dtype=x.dtype, device=x.device)
-        x_std = torch.zeros(seq_len.shape, dtype=x.dtype, device=x.device)
-        for i in range(x.shape[0]):
-            x_mean[i] = x[i, :, : seq_len[i].item()].mean()
-            x_std[i] = x[i, :, : seq_len[i].item()].std()
-        # make sure x_std is not zero
-        x_std += CONSTANT
-        return (x - x_mean.view(-1, 1, 1)) / x_std.view(-1, 1, 1)
-    elif "fixed_mean" in normalize_type and "fixed_std" in normalize_type:
-        x_mean = torch.tensor(normalize_type["fixed_mean"], device=x.device)
-        x_std = torch.tensor(normalize_type["fixed_std"], device=x.device)
-        return (x - x_mean.view(x.shape[0], x.shape[1]).unsqueeze(2)) / x_std.view(x.shape[0], x.shape[1]).unsqueeze(2)
-    else:
-        return x
-
-
-def splice_frames(x, frame_splicing):
-    """ Stacks frames together across feature dim
-
-    input is batch_size, feature_dim, num_frames
-    output is batch_size, feature_dim*frame_splicing, num_frames
-
-    """
-    seq = [x]
-    for n in range(1, frame_splicing):
-        seq.append(torch.cat([x[:, :, :n], x[:, :, n:]], dim=2))
-    return torch.cat(seq, dim=1)
-
-
 class WaveformFeaturizer(object):
     def __init__(self, sample_rate=16000, int_values=False, augmentor=None):
         self.augmentor = augmentor if augmentor is not None else AudioAugmentor()
@@ -341,6 +296,51 @@ class FilterbankFeatures(nn.Module):
     def filter_banks(self):
         return self.fb
 
+    def normalize_batch(self, x, seq_len):
+     normalize_type = self.normalize
+     if normalize_type == "per_feature":
+        x_mean = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
+        x_std = torch.zeros((seq_len.shape[0], x.shape[1]), dtype=x.dtype, device=x.device)
+        for i in range(x.shape[0]):
+            if x[i, :, : seq_len[i]].shape[1] == 1:
+                raise ValueError(
+                    "normalize_batch with `per_feature` normalize_type received a tensor of length 1. This will result "
+                    "in torch.std() returning nan"
+                )
+            x_mean[i, :] = x[i, :, : seq_len[i]].mean(dim=1)
+            x_std[i, :] = x[i, :, : seq_len[i]].std(dim=1)
+        # make sure x_std is not zero
+        x_std += self.dither
+        return (x - x_mean.unsqueeze(2)) / x_std.unsqueeze(2)
+     elif normalize_type == "all_features":
+        x_mean = torch.zeros(seq_len.shape, dtype=x.dtype, device=x.device)
+        x_std = torch.zeros(seq_len.shape, dtype=x.dtype, device=x.device)
+        for i in range(x.shape[0]):
+            x_mean[i] = x[i, :, : seq_len[i].item()].mean()
+            x_std[i] = x[i, :, : seq_len[i].item()].std()
+        # make sure x_std is not zero
+        x_std += self.dither
+        return (x - x_mean.view(-1, 1, 1)) / x_std.view(-1, 1, 1)
+#     elif "fixed_mean" in normalize_type and "fixed_std" in normalize_type:
+#        x_mean = torch.tensor(normalize_type["fixed_mean"], device=x.device)
+#        x_std = torch.tensor(normalize_type["fixed_std"], device=x.device)
+#        return (x - x_mean.view(x.shape[0], x.shape[1]).unsqueeze(2)) / x_std.view(x.shape[0], x.shape[1]).unsqueeze(2)
+     else:
+        return x
+
+    def splice_frames(self, x):
+        """ Stacks frames together across feature dim
+        
+        input is batch_size, feature_dim, num_frames
+        output is batch_size, feature_dim*frame_splicing, num_frames
+        
+        """
+        seq = [x]
+        for n in range(1, self.frame_splicing):
+            seq.append(torch.cat([x[:, :, :n], x[:, :, n:]], dim=2))
+        return torch.cat(seq, dim=1)
+        
+    @torch.no_grad()
     def forward(self, x, seq_len):
         seq_len = self.get_seq_len(seq_len.float())
 
@@ -384,25 +384,23 @@ class FilterbankFeatures(nn.Module):
 
         # frame splicing if required
         if self.frame_splicing > 1:
-            x = splice_frames(x, self.frame_splicing)
+            x = self.splice_frames(x)
 
         # normalize if required
         if self.normalize:
-            x = normalize_batch(x, seq_len, normalize_type=self.normalize)
+            x = self.normalize_batch(x, seq_len)
 
         # mask to zero any values beyond seq_len in batch, pad to multiple of
         # `pad_to` (for efficiency)
         max_len = x.size(-1)
         mask = torch.arange(max_len).to(x.device)
         mask = mask.expand(x.size(0), max_len) >= seq_len.unsqueeze(1)
-        x = x.masked_fill(mask.unsqueeze(1).type(torch.bool).to(device=x.device), self.pad_value)
+        x = x.masked_fill(mask.unsqueeze(1).to(device=x.device), self.pad_value)
         del mask
         pad_to = self.pad_to
-        if pad_to == "max":
-            x = nn.functional.pad(x, (0, self.max_length - x.size(-1)), value=self.pad_value)
-        elif pad_to > 0:
+        if pad_to > 0:
             pad_amt = x.size(-1) % pad_to
             if pad_amt != 0:
                 x = nn.functional.pad(x, (0, pad_to - pad_amt), value=self.pad_value)
-
+                
         return x, seq_len

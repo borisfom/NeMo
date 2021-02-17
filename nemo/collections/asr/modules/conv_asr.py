@@ -52,14 +52,15 @@ class ConvASREncoder(NeuralModule, Exportable):
         https://arxiv.org/pdf/1910.10261.pdf
     """
 
-    def _prepare_for_export(self):
+    def _prepare_for_export(self, replace_1D_2D=False):
         m_count = 0
         for m in self.modules():
             if isinstance(m, MaskedConv1d):
                 m.use_mask = False
                 m_count += 1
         logging.warning(f"Turned off {m_count} masked convolutions")
-
+        super()._prepare_for_export(replace_1D_2D=replace_1D_2D)
+        
     def input_example(self):
         """
         Generates input examples for tracing etc.
@@ -183,7 +184,7 @@ class ConvASREncoder(NeuralModule, Exportable):
 
         self.encoder = torch.nn.Sequential(*encoder_layers)
         self.apply(lambda x: init_weights(x, mode=init_mode))
-
+        
     @typecheck()
     def forward(self, audio_signal, length=None):
         s_input, length = self.encoder(([audio_signal], length))
@@ -192,6 +193,13 @@ class ConvASREncoder(NeuralModule, Exportable):
 
         return s_input[-1], length
 
+    @typecheck()
+    def forward_for_export(self, audio_signal, length=None):
+        print ( audio_signal.size() )
+        audio_signal = audio_signal.unsqueeze(-1)
+        print ( audio_signal.size() )
+        s_input, _ = self.encoder(([audio_signal], length))
+        return s_input[-1] # .squeeze(-1)
 
 class ConvASRDecoder(NeuralModule, Exportable):
     """Simple ASR Decoder for use with CTC-based models such as JasperNet and QuartzNet
@@ -250,7 +258,7 @@ class ConvASRDecoder(NeuralModule, Exportable):
         input_example = torch.randn(bs, self._feat_in, seq).to(next(self.parameters()).device)
         return tuple([input_example])
 
-    def _prepare_for_export(self):
+    def _prepare_for_export(self, replace_1D_2D=False):
         m_count = 0
         for m in self.modules():
             if type(m).__name__ == "MaskedConv1d":
@@ -258,7 +266,7 @@ class ConvASRDecoder(NeuralModule, Exportable):
                 m_count += 1
         if m_count > 0:
             logging.warning(f"Turned off {m_count} masked convolutions")
-        Exportable._prepare_for_export(self)
+        Exportable._prepare_for_export(self, replace_1D_2D=replace_1D_2D)
 
     @property
     def vocabulary(self):

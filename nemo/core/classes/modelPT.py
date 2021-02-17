@@ -1260,7 +1260,11 @@ class ModelPT(LightningModule, Model):
         """
         Utility property that returns the total number of parameters of the Model.
         """
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+        num: int = 0
+        for p in self.parameters():
+            if p.requires_grad:
+                num += p.numel()
+        return num
 
     @property
     def cfg(self):

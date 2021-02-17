@@ -19,6 +19,7 @@ from typing import Dict
 
 import onnx
 import torch
+import trtorch
 
 from nemo.core.classes import typecheck
 from nemo.core.neural_types import AxisKind, NeuralType
@@ -147,19 +148,23 @@ class Exportable(ABC):
             # Allow user to completely override forward method to export
             if forward_method is None and hasattr(type(self), "forward_for_export"):
                 forward_method = type(self).forward_for_export
-
+                my_forward_method = self.forward_for_export
+                
             if forward_method:
                 old_forward_method = type(self).forward
+                old_my_forward = self.forward
                 type(self).forward = forward_method
+                self.forward = my_forward_method
 
             # Set module to eval mode
             if set_eval:
                 self.eval()
 
             format = self.get_format(output)
+
             self._prepare_for_export()
 
-            with torch.jit.optimized_execution(True):
+            with torch.jit.optimized_execution(True), torch.no_grad():
                 jitted_model = None
                 if try_script:
                     try:
@@ -170,7 +175,19 @@ class Exportable(ABC):
             if input_example is None:
                 input_example = self.input_module.input_example()
 
-            with torch.jit.optimized_execution(True):
+            input_names = self.input_module.get_input_names(input_example)
+            output_names = self.output_module.get_output_names(output_example)
+
+            if isinstance(input_example, Dict):
+                input_example = tuple(input_example.values())
+                
+            if output_example is None:
+                if isinstance(input_example, tuple):
+                    output_example = self.forward(*input_example)
+                else:
+                    output_example = self.forward(input_example)    
+                    
+            with torch.jit.optimized_execution(True), torch.no_grad():
                 if format == ExportFormat.TORCHSCRIPT:
                     if isinstance(input_example, Dict):
                         input_example = tuple(input_example.values())
@@ -186,26 +203,23 @@ class Exportable(ABC):
                         )
                     jitted_model.save(output)
                     assert os.path.exists(output)
+                    # Compile module with TRTorch
+                    shapes = [i.shape for i in input_example]
+                    compiled_trt_model = trtorch.compile(jitted_model, {
+                        "input_shapes": shapes,
+                        "op_precision": torch.half, # Run in FP16
+                    })
+                    results = compiled_trt_model(data.half())
+
 
                 elif format == ExportFormat.ONNX:
                     if jitted_model is None:
                         jitted_model = self
-                    if output_example is None:
-                        if isinstance(input_example, tuple):
-                            output_example = self.forward(*input_example)
-                        else:
-                            output_example = self.forward(input_example)
-
-                    input_names = self.input_module.get_input_names(input_example)
-                    output_names = self.output_module.get_output_names(output_example)
 
                     # dynamic axis is a mapping from input/output_name => list of "dynamic" indices
                     if dynamic_axes is None and use_dynamic_axes:
                         dynamic_axes = self.input_module.get_input_dynamic_axes(input_names)
                         dynamic_axes = {**dynamic_axes, **self.output_module.get_output_dynamic_axes(output_names)}
-
-                    if isinstance(input_example, Dict):
-                        input_example = tuple(input_example.values())
 
                     torch.onnx.export(
                         jitted_model,
@@ -250,6 +264,7 @@ class Exportable(ABC):
             typecheck.set_typecheck_enabled(enabled=True)
             if forward_method:
                 type(self).forward = old_forward_method
+                self.forward = old_my_forward
         return exported
 
     @property

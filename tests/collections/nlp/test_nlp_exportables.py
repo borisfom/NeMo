@@ -36,7 +36,7 @@ def classifier_export(obj):
         filename = os.path.join(tmpdir, obj.__class__.__name__ + '.onnx')
         ts_filename = os.path.join(tmpdir, obj.__class__.__name__ + '.pt')
         obj = obj.cuda()
-        obj.export(output=ts_filename)
+        #        obj.export(output=ts_filename)
         obj.export(output=filename)
 
 

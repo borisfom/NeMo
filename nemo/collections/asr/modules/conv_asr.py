@@ -60,6 +60,7 @@ class ConvASREncoder(NeuralModule, Exportable):
                 m_count += 1
         logging.warning(f"Turned off {m_count} masked convolutions")
         super()._prepare_for_export(replace_1D_2D=replace_1D_2D)
+        self.forward = self.forward_for_export
         
     def input_example(self):
         """

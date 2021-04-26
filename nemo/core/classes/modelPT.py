@@ -1280,7 +1280,7 @@ class ModelPT(LightningModule, Model):
             )
 
     def on_pretrain_routine_start(self):
-        init_model_path = self._cfg.get("init_weights_from_model", None)
-        if init_model_path and self.global_step == 0:
+        init_model_path = self._cfg.get("init_weights_from_model", "")
+        if init_model_path and init_model_path != "" and self.global_step == 0:
             logging.info(f'Initializing the model with the checkpoint from "{init_model_path}"')
             self.load_weights_from_checkpoint(init_model_path, strict=True)

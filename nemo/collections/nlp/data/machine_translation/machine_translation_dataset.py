@@ -19,7 +19,7 @@ import json
 import pickle
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import braceexpand
 import numpy as np
@@ -35,8 +35,8 @@ __all__ = ['TranslationDataset', 'TarredTranslationDataset']
 
 @dataclass
 class TranslationDataConfig:
-    src_file_name: Optional[str] = None
-    tgt_file_name: Optional[str] = None
+    src_file_name: Optional[Any] = None  # Any = str or List[str]
+    tgt_file_name: Optional[Any] = None  # Any = str or List[str]
     use_tarred_dataset: bool = False
     tar_files: Optional[str] = None
     metadata_file: Optional[str] = None
@@ -400,7 +400,7 @@ class TarredTranslationDataset(IterableDataset):
         self.tarpath = text_tar_filepaths
 
         # Put together WebDataset
-        self._dataset = wd.WebDataset(text_tar_filepaths)
+        self._dataset = wd.WebDataset(urls=text_tar_filepaths, nodesplitter=None)
 
         if shuffle_n > 0:
             self._dataset = self._dataset.shuffle(shuffle_n)

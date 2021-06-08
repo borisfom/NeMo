@@ -202,6 +202,7 @@ class Typing(ABC):
                         f"{input_types[key].compare(value.neural_type)} :",
                         f"Input type expected : {input_types[key]}",
                         f"Input type found : {value.neural_type}",
+                        f"Argument: {key}",
                     ]
                     for i, dict_tuple in enumerate(metadata.base_types[key].elements_type.type_parameters.items()):
                         error_msg.insert(i + 2, f'  input param_{i} : {dict_tuple[0]}: {dict_tuple[1]}')
@@ -505,6 +506,7 @@ class FileIO(ABC):
         override_config_path: Optional[str] = None,
         map_location: Optional['torch.device'] = None,
         strict: bool = True,
+        return_config: bool = False,
     ):
         """Restores module/model with weights"""
         raise NotImplementedError()
@@ -632,7 +634,7 @@ class Model(Typing, Serialization, FileIO):
                 config file
             map_location: Optional torch.device() to map the instantiated model to a device.
                 By default (None), it will select a GPU if available, falling back to CPU otherwise.
-            strict: Passed to torch.load_state_dict
+            strict: Passed to torch.load_state_dict. By default true.
             return_config: If set to true, will return just the underlying config of the restored
                 model as an OmegaConf DictConfig object without instantiating the model.
 

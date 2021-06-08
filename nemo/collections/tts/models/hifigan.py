@@ -116,9 +116,6 @@ class HifiGanModel(Vocoder, Exportable):
         """
         return self.generator(x=spec)
 
-    def forward_for_export(self, spec):
-        return self.generator(x=spec)
-
     @typecheck(
         input_types={"spec": NeuralType(('B', 'C', 'T'), MelSpectrogramType())},
         output_types={"audio": NeuralType(('B', 'T'), AudioSignal())},
@@ -340,7 +337,8 @@ class HifiGanModel(Vocoder, Exportable):
         Override this method to prepare module for export. This is in-place operation.
         Base version does common necessary module replacements (Apex etc)
         """
-        self.generator.remove_weight_norm()
+        if self.generator is not None:
+            self.generator.remove_weight_norm()
 
     def input_example(self):
         """
@@ -350,4 +348,10 @@ class HifiGanModel(Vocoder, Exportable):
         """
         par = next(self.parameters())
         mel = torch.randn((1, self.cfg['preprocessor']['nfilt'], 96), device=par.device, dtype=par.dtype)
-        return mel
+        return ({'spec': mel},)
+
+    def forward_for_export(self, spec):
+        """
+        Runs the generator, for inputs and outputs see input_types, and output_types
+        """
+        return self.generator(x=spec)

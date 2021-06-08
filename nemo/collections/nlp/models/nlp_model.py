@@ -216,16 +216,16 @@ class NLPModel(ModelPT, Exportable):
 
                 self._trainer.checkpoint_connector = NLPCheckpointConnector(self._trainer)
 
-                # Configure checkpointing for model parallel
-                if app_state.create_checkpoint_callback:
-                    # global rank 0 is configured by exp_manager
-                    if not is_global_rank_zero() and app_state.data_parallel_rank == 0:
-                        configure_checkpointing(
-                            self._trainer,
-                            app_state.log_dir,
-                            app_state.checkpoint_name,
-                            app_state.checkpoint_callback_params,
-                        )
+                # # Configure checkpointing for model parallel
+                # if app_state.create_checkpoint_callback:
+                #     # global rank 0 is configured by exp_manager
+                #     if not is_global_rank_zero() and app_state.data_parallel_rank == 0:
+                #         configure_checkpointing(
+                #             self._trainer,
+                #             app_state.log_dir,
+                #             app_state.checkpoint_name,
+                #             app_state.checkpoint_callback_params,
+                #         )
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         """ LightningModule hook that's used to save things in addition to model weights. """
@@ -331,7 +331,7 @@ class NLPModel(ModelPT, Exportable):
         restore_path: str,
         override_config_path: Optional[Union[OmegaConf, str]] = None,
         map_location: Optional[torch.device] = None,
-        strict: bool = False,
+        strict: bool = True,
         return_config: bool = False,
         trainer: Trainer = None,
     ):
@@ -344,7 +344,7 @@ class NLPModel(ModelPT, Exportable):
                 config file or an OmegaConf / DictConfig object representing the model config.
             map_location: Optional torch.device() to map the instantiated model to a device.
                 By default (None), it will select a GPU if available, falling back to CPU otherwise.
-            strict: Passed to load_state_dict.
+            strict: Passed to load_state_dict. Set to True by default.
             return_config: If set to true, will return just the underlying config of the restored
                 model as an OmegaConf DictConfig object without instantiating the model.
             trainer: PyTorch Lightning trainer. Must be passed in order to use model parallel .nemo
@@ -422,7 +422,7 @@ class NLPModel(ModelPT, Exportable):
             restored_model = cls._default_restore_from(
                 restore_path, override_config_path, map_location, strict, return_config
             )
-            restored_model._trainer = trainer
+            restored_model.set_trainer(trainer)
             return restored_model
         else:
             return super().restore_from(restore_path, override_config_path, map_location, strict, return_config)

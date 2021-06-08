@@ -68,7 +68,7 @@ class CallbackParams:
     save_last: Optional[bool] = True
     save_top_k: Optional[int] = 3
     save_weights_only: Optional[bool] = False
-    mode: Optional[str] = "auto"
+    mode: Optional[str] = "min"
     period: Optional[int] = 1
     prefix: Optional[str] = None  # If None, exp_manager will attempt to handle the filepath
     postfix: str = ".nemo"
@@ -480,9 +480,9 @@ def get_log_dir(
                 else:
                     tensorboard_logger = TensorBoardLogger(save_dir=Path(_exp_dir), name=name, version=version)
                     version = f"version_{tensorboard_logger.version}"
-                os.environ[NEMO_ENV_VARNAME_VERSION] = version
+                os.environ[NEMO_ENV_VARNAME_VERSION] = "" if version is None else version
 
-    log_dir = Path(_exp_dir) / Path(str(name)) / Path(str(version))
+    log_dir = Path(_exp_dir) / Path(str(name)) / Path("" if version is None else str(version))
     return log_dir, str(_exp_dir), name, version
 
 
@@ -589,6 +589,12 @@ class NeMoModelCheckpoint(ModelCheckpoint):
         self.postfix = postfix
         self.previous_best_path = ""
 
+        # `prefix` is deprecated
+        if 'prefix' in kwargs:
+            self.prefix = kwargs.pop('prefix')
+        else:
+            self.prefix = ""
+
         # Call the parent class constructor with the remaining kwargs.
         super().__init__(**kwargs)
 
@@ -640,9 +646,7 @@ class NeMoModelCheckpoint(ModelCheckpoint):
         pl_module.save_to(save_path=os.path.join(self.dirpath, self.prefix + self.postfix))
 
 
-def configure_checkpointing(
-    trainer: 'pytorch_lightning.Trainer', log_dir: Path, name: str, params: 'DictConfig',
-):
+def configure_checkpointing(trainer: 'pytorch_lightning.Trainer', log_dir: Path, name: str, params: 'DictConfig'):
     """ Adds ModelCheckpoint to trainer. Raises CheckpointMisconfigurationError if trainer already has a ModelCheckpoint
     callback or if trainer.weights_save_path was passed to Trainer.
     """
@@ -671,9 +675,10 @@ def configure_checkpointing(
     if params.dirpath is None:
         params.dirpath = Path(log_dir / 'checkpoints')
     if params.filename is None:
-        params.filename = f'--{{{params.monitor}:.2f}}-{{epoch}}'
+        params.filename = f'{name}--{{{params.monitor}:.2f}}-{{epoch}}'
     if params.prefix is None:
         params.prefix = name
+    NeMoModelCheckpoint.CHECKPOINT_NAME_LAST = params.filename + '-last'
 
     logging.debug(params.dirpath)
     logging.debug(params.filename)
@@ -699,6 +704,7 @@ def configure_checkpointing(
             )
 
     checkpoint_callback = NeMoModelCheckpoint(**params)
+    checkpoint_callback.last_model_path = trainer.resume_from_checkpoint or ""
     trainer.callbacks.append(checkpoint_callback)
 
 

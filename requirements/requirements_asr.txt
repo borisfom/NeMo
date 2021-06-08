@@ -20,3 +20,5 @@ pyannote.core
 pyannote.metrics
 pyamg
 torch-stft
+ipywidgets
+matplotlib

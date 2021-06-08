@@ -73,8 +73,8 @@ pipeline {
     stage('L0: Unit Tests CPU') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       steps {
@@ -85,8 +85,8 @@ pipeline {
     stage('L0: Computer Vision Integration') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -113,8 +113,8 @@ pipeline {
     // stage('L0: Integration Tests CPU') {
     //   when {
     //     anyOf{
-    //       branch 'v1.0.0'
-    //       changeRequest target: 'v1.0.0'
+    //       branch 'main'
+    //       changeRequest target: 'main'
     //     }
     //   }
     //   steps {
@@ -133,7 +133,7 @@ pipeline {
     //   when {
     //     anyOf{
     //       branch 'dev
-    //       changeRequest target: 'v1.0.0'
+    //       changeRequest target: 'main'
     //     }
     //   }
     //   steps {
@@ -144,8 +144,8 @@ pipeline {
     stage('L2: NeMo text processing') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -173,8 +173,8 @@ pipeline {
     stage('L2: ASR dev run') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -190,33 +190,7 @@ pipeline {
             sh 'rm -rf examples/asr/speech_to_text_results'
           }
         }
-        //         stage('Speech to Text - DALI AudioToMelSpectrogramPreprocessor') {
-        //           steps {
-        //             sh 'python examples/asr/speech_to_text.py \
-        //             model.train_ds.manifest_filepath=/home/TestData/an4_dataset/an4_train.json \
-        //             +model.train_ds.use_dali=True \
-        //             model.validation_ds.manifest_filepath=/home/TestData/an4_dataset/an4_val.json \
-        //             +model.validation_ds.use_dali=True \
-        //             trainer.gpus=[0] \
-        //             +trainer.fast_dev_run=True \
-        //             exp_manager.exp_dir=examples/asr/speech_to_text_results'
-        //             sh 'rm -rf examples/asr/speech_to_text_results'
-        //           }
-        //         }
-        //         stage('Speech to Text - DALI AudioToMFCCPreprocessor') {
-        //           steps {
-        //             sh 'python examples/asr/speech_to_text.py \
-        //             model.train_ds.manifest_filepath=/home/TestData/an4_dataset/an4_train.json \
-        //             +model.train_ds.use_dali=True \
-        //             model.validation_ds.manifest_filepath=/home/TestData/an4_dataset/an4_val.json \
-        //             +model.validation_ds.use_dali=True \
-        //             model.preprocessor._target_=nemo.collections.asr.modules.AudioToMFCCPreprocessor \
-        //             trainer.gpus=[0] \
-        //             +trainer.fast_dev_run=True \
-        //             exp_manager.exp_dir=examples/asr/speech_to_text_results'
-        //             sh 'rm -rf examples/asr/speech_to_text_results'
-        //           }
-        //         }
+
         stage('Speech to Label') {
           steps {
             sh 'python examples/asr/speech_to_label.py \
@@ -299,12 +273,60 @@ pipeline {
       }
     }
 
+    stage('L2: ASR DALI dev run') {
+      when {
+        anyOf {
+          branch 'main'
+          changeRequest target: 'main'
+        }
+      }
+      failFast true
+      parallel {
+        stage('Speech to Text - DALI AudioToMelSpectrogramPreprocessor') {
+          steps {
+            sh 'python examples/asr/speech_to_text.py \
+            model.train_ds.manifest_filepath=/home/TestData/an4_dataset/an4_train.json \
+            +model.train_ds.use_dali=True \
+            model.validation_ds.manifest_filepath=/home/TestData/an4_dataset/an4_val.json \
+            +model.validation_ds.use_dali=True \
+            trainer.gpus=[0] \
+            +trainer.fast_dev_run=True \
+            exp_manager.exp_dir=examples/asr/speech_to_text_results'
+            sh 'rm -rf examples/asr/speech_to_text_results'
+          }
+        }
+        // TODO: This would fail due to an unnecessary torchaudio import.
+        //       To be enabled once torchaudio is available in the container used for CI
+        // stage('Speech to Text - DALI AudioToMFCCPreprocessor') {
+        //   steps {
+        //     sh 'python examples/asr/speech_to_text.py \
+        //     model.train_ds.manifest_filepath=/home/TestData/an4_dataset/an4_train.json \
+        //     +model.train_ds.use_dali=True \
+        //     model.validation_ds.manifest_filepath=/home/TestData/an4_dataset/an4_val.json \
+        //     +model.validation_ds.use_dali=True \
+        //     model.preprocessor._target_=nemo.collections.asr.modules.AudioToMFCCPreprocessor \
+        //     ~model.preprocessor.normalize \
+        //     ~model.preprocessor.features \
+        //     ~model.preprocessor.frame_splicing \
+        //     ~model.preprocessor.dither \
+        //     ~model.preprocessor.stft_conv \
+        //     +model.n_mels=64 \
+        //     +model.n_mfcc=64 \
+        //     trainer.gpus=[0] \
+        //     +trainer.fast_dev_run=True \
+        //     exp_manager.exp_dir=examples/asr/speech_to_text_results'
+        //     sh 'rm -rf examples/asr/speech_to_text_results'
+        //   }
+        // }
+      }
+    }
+
 //  TODO: UNCOMMENT TESTS AFTER 21.04 release (numba 0.53 min requirement)
 //     stage('L2: ASR RNNT dev run') {
 //       when {
 //         anyOf {
-//           branch 'v1.0.0'
-//           changeRequest target: 'v1.0.0'
+//           branch 'main'
+//           changeRequest target: 'main'
 //         }
 //       }
 //       failFast true
@@ -341,8 +363,8 @@ pipeline {
     stage('L2: ASR Multi-dataloader dev run') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -387,8 +409,8 @@ pipeline {
     stage('L2: Speech Transcription') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -398,9 +420,10 @@ pipeline {
             sh 'python examples/asr/transcribe_speech.py \
             pretrained_name="QuartzNet15x5Base-En" \
             audio_dir="/home/TestData/an4_transcribe/test_subset/" \
+            output_filename="stt_test_res.json" \
             cuda=true \
             amp=true'
-            sh 'rm -rf examples/asr/speech_to_text_transcriptions.txt'
+            sh 'rm -rf stt_test_res.json'
           }
         }
       }
@@ -409,8 +432,8 @@ pipeline {
     stage('L2: Segmentation Tool') {
       when {
             anyOf {
-              branch 'v1.0.0'
-              changeRequest target: 'v1.0.0'
+              branch 'main'
+              changeRequest target: 'main'
             }
       }
       stages {
@@ -472,8 +495,8 @@ pipeline {
     stage('L2: Multi-GPU Megatron finetuning') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -497,8 +520,8 @@ pipeline {
     stage('L2: SGD-QA') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -543,8 +566,8 @@ pipeline {
     stage('L2: Parallel BERT SQUAD v1.1 / v2.0') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -602,8 +625,8 @@ pipeline {
     stage('L2: MegaBERT Token Classification') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -626,8 +649,8 @@ pipeline {
     stage('L2: Parallel SQUAD v1.1 & v2.0') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -714,8 +737,8 @@ pipeline {
     stage('L2: Model Parallel Size 2 Megatron Text Classification') {
       when {
         anyOf{
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -743,8 +766,8 @@ pipeline {
     stage('L2: Model Parallel Size 2 Megatron Autoresume') {
       when {
         anyOf{
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -774,8 +797,8 @@ pipeline {
     stage('L2: Model Parallel Size 2 Megatron Evaluation from .nemo') {
       when {
         anyOf{
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -794,8 +817,8 @@ pipeline {
     stage('L2: Model Parallel Size 2 Megatron Train from .nemo') {
       when {
         anyOf{
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -816,8 +839,8 @@ pipeline {
     stage('L2: Parallel NLP Examples 2') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -898,8 +921,8 @@ pipeline {
     stage('L2: Parallel Pretraining BERT pretraining from Text/Preprocessed') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -1010,8 +1033,8 @@ pipeline {
     stage('L2: Entity Linking') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -1036,8 +1059,8 @@ pipeline {
     stage('L2: NMT Attention is All You Need Training') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -1151,8 +1174,8 @@ pipeline {
     stage('L2: NMT with HuggingFace') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -1215,8 +1238,8 @@ pipeline {
     stage('L2: NMT Tarred Dataset Creation') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
@@ -1269,8 +1292,8 @@ pipeline {
     stage('L2: TTS Fast dev runs 1') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       parallel {
@@ -1324,8 +1347,8 @@ pipeline {
     stage('L2: TTS Fast dev runs 2') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
 
@@ -1378,22 +1401,13 @@ pipeline {
     stage('L??: Speech Checkpoints tests') {
       when {
         anyOf {
-          branch 'v1.0.0'
-          changeRequest target: 'v1.0.0'
+          branch 'main'
+          changeRequest target: 'main'
         }
       }
       failFast true
-      parallel {
-        stage('QuartzNet15x5Base-En') {
-          steps {
-            sh 'CUDA_VISIBLE_DEVICES=0 python examples/asr/speech_to_text_infer.py --asr_model QuartzNet15x5Base-En --dataset /home/TestData/librispeech/librivox-dev-other.json --wer_tolerance 0.1012 --batch_size 64'
-          }
-        }
-        stage('Tacotron2_WaveGlow_Jasper') {
-          steps {
-            sh 'CUDA_VISIBLE_DEVICES=1 python examples/tts/test_tts_infer.py --wer_tolerance 0.25 --debug --trim'
-          }
-        }
+      steps {
+        sh 'CUDA_VISIBLE_DEVICES=0 python examples/asr/speech_to_text_infer.py --asr_model QuartzNet15x5Base-En --dataset /home/TestData/librispeech/librivox-dev-other.json --wer_tolerance 0.1012 --batch_size 64'
       }
     }
   }

@@ -35,20 +35,13 @@ Quick Start:
     audio = vocoder.convert_spectrogram_to_audio(spec=spectrogram)
 
     # Save the audio to disk in a file called speech.wav
-    sf.write("speech.wav", audio.to('cpu').numpy(), 22050)
+    # Note vocoder return a batch of audio. In this example, we just take the first and only sample.
+    sf.write("speech.wav", audio.to('cpu').detach().numpy()[0], 22050)
 
 .. note::
 
    For an interactive version of the quick start above, refer to the TTS inference notebook that can be found on the
    github readme.
-
-The full documentation tree is as follows:
-
-.. toctree::
-   :maxdepth: 8
-
-   datasets
-   api
 
 Available Models
 ################

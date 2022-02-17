@@ -534,7 +534,7 @@ class SqueezeExcite(nn.Module):
         if self.seq_range.device != seq_lens.device:
             seq_lens = seq_lens.to(self.seq_range.device)
 
-        mask = self.seq_range[:max_audio_length].expand(seq_lens.size(0), -1) < seq_lens.unsqueeze(-1)  # [B, T]; bool
+        mask = self.seq_range[:max_audio_length].repeat(seq_lens.size(0), 1) < seq_lens.unsqueeze(-1)  # [B, T]; bool
         mask = mask.unsqueeze(1)  # [B, 1, T]
 
         return mask

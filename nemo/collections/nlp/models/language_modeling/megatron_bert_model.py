@@ -452,7 +452,7 @@ class MegatronBertModel(NLPModel):
         nvidia_torch_version = os.getenv('NVIDIA_PYTORCH_VERSION', None)
         if nvidia_torch_version is not None:
             NVIDIA_TORCH_MAJOR = int(nvidia_torch_version.split('.')[0])
-            NVIDIA_TORCH_MINOR = int(nvidia_torch_version.split('.')[1])
+            NVIDIA_TORCH_MINOR = 12 # int(nvidia_torch_version.split('.')[1])
 
             # Apex Persistent layer norm is supported from Nvidia PyTorch container v21.11
             if NVIDIA_TORCH_MAJOR < 21 or (NVIDIA_TORCH_MAJOR == 21 and NVIDIA_TORCH_MINOR < 11):

@@ -127,7 +127,7 @@ class MultiHeadAttention(nn.Module):
         returns:
             output (torch.Tensor): transformed `value` (batch, time1, d_model) weighted by the query dot key attention
         """
-        key, value, query, cache_next = self.do_caching(
+        key, value, query = self.do_caching(
             key=key, value=value, query=query, cache=cache, cache_next=cache_next
         )
 
@@ -137,20 +137,18 @@ class MultiHeadAttention(nn.Module):
 
     def do_caching(self, key, value, query, cache, cache_next):
         if cache is not None:
-            cache = cache[self._cache_id]
             q_length = query.size(1)
             q_input = query
-            key = value = torch.cat((cache, key), dim=1)
+            key = value = torch.cat((cache[self._cache_id], key), dim=1)
 
         if cache_next is not None:
-            cache_next = cache_next[self._cache_id]
-            cache_next_length = cache_next.size(1)
+            cache_next_length = cache_next.size(2)
             q_keep_size = q_length - self.cache_drop_size
 
-            cache_next[:, :-q_keep_size, :] = cache[:, -(cache_next_length - q_keep_size) :, :].clone()
-            cache_next[:, -q_keep_size:, :] = q_input[:, :q_keep_size, :]
+            cache_next[self._cache_id, :, :-q_keep_size, :] = cache[self._cache_id, :, -(cache_next_length - q_keep_size) :, :].clone()
+            cache_next[self._cache_id, :, -q_keep_size:, :] = q_input[:, :q_keep_size, :]
 
-        return key, value, query, cache_next
+        return key, value, query
 
 
 class RelPositionMultiHeadAttention(MultiHeadAttention):
@@ -206,7 +204,7 @@ class RelPositionMultiHeadAttention(MultiHeadAttention):
         Returns:
             output (torch.Tensor): transformed `value` (batch, time1, d_model) weighted by the query dot key attention
         """
-        key, value, query, cache_next = self.do_caching(
+        key, value, query = self.do_caching(
             key=key, value=value, query=query, cache=cache, cache_next=cache_next
         )
 

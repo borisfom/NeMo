@@ -129,13 +129,14 @@ def verify_runtime(
     sess = onnxruntime.InferenceSession(
         onnx_model.SerializeToString(), sess_options=onnx_session_opt, providers=['CUDAExecutionProvider']
     )
-    ort_out = sess.run(output_names, to_onnxrt_input(input_names, input_dict, input_list))
+    ort_out = sess.run(None, to_onnxrt_input(input_names, input_dict, input_list))
     all_good = True
-
-    for i, out in enumerate(ort_out[0]):
+    for i, out in enumerate(ort_out):
         expected = output_example[i]
+
         if torch.is_tensor(expected):
             tout = torch.from_numpy(out)
+            logging.info(f"Checking output {i}, shape: {expected.shape}:\n{expected}\n{tout}")
             if not torch.allclose(tout, expected.cpu(), rtol=check_tolerance, atol=100 * check_tolerance):
                 all_good = False
                 logging.info(f"onnxruntime results mismatch! PyTorch(expected):\n{expected}\nONNXruntime:\n{tout}")

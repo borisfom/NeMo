@@ -167,13 +167,8 @@ def nemo_export(argv):
             )
         )
         raise e
-    finally:
-        if export_cache_support_prev is not None:
-            model.encoder.export_cache_support = export_cache_support_prev
 
     logging.info("Successfully exported to {}".format(out))
-
-    del model
 
     if args.runtime_check:
         verify_runtime(out, input_list, input_dict, input_names, output_names, output_example)

@@ -152,7 +152,12 @@ class Exportable(ABC):
                     )
 
                     if check_trace:
-                        verify_runtime(output, input_list, input_dict, input_names, output_names, output_example)
+                        #use a few unlikely inputs
+                        verify_runtime(self, output,
+                                       [self.input_module.input_example(max_dim=333),
+                                        self.input_module.input_example(max_dim=777),
+                                        self.input_module.input_example(max_dim=1111)]
+                        )
 
                 else:
                     raise ValueError(f'Encountered unknown export format {format}.')

@@ -109,12 +109,7 @@ def to_onnxrt_input(input_names, input_dict, input_list):
             odict[k] = input_list.pop().cpu().numpy()
     return odict
 
-
-def verify_runtime(
-    output, input_list, input_dict, input_names, output_names, output_example, check_tolerance=0.01,
-):
-    # Verify the model can be read, and is valid
-
+def verify_runtime(model, output, input_examples, check_tolerance=0.01):
     onnx_model = onnx.load(output)
     input_names = [node.name for node in onnx_model.graph.input]
 
@@ -129,7 +124,19 @@ def verify_runtime(
     sess = onnxruntime.InferenceSession(
         onnx_model.SerializeToString(), sess_options=onnx_session_opt, providers=['CUDAExecutionProvider']
     )
-    ort_out = sess.run(None, to_onnxrt_input(input_names, input_dict, input_list))
+    all_good = True
+    for input_example in input_examples:
+        input_list, input_dict = parse_input_example(input_example)
+        output_example = model.forward(*input_list, **input_dict)
+        ort_input=to_onnxrt_input(input_names, input_dict, input_list)
+        all_good = all_good and run_ort_and_compare(sess, ort_input, output_example, check_tolerance)
+    status = "SUCCESS" if all_good else "FAIL"
+    logging.info(f"ONNX generated at {output} verified with onnxruntime : " + status)
+    return all_good
+
+def run_ort_and_compare(sess, ort_input, output_example, check_tolerance=0.01):
+    # Verify the model can be read, and is valid
+    ort_out = sess.run(None, ort_input)
     all_good = True
     for i, out in enumerate(ort_out):
         expected = output_example[i]
@@ -140,8 +147,6 @@ def verify_runtime(
             if not torch.allclose(tout, expected.cpu(), rtol=check_tolerance, atol=100 * check_tolerance):
                 all_good = False
                 logging.info(f"onnxruntime results mismatch! PyTorch(expected):\n{expected}\nONNXruntime:\n{tout}")
-    status = "SUCCESS" if all_good else "FAIL"
-    logging.info(f"ONNX generated at {output} verified with onnxruntime : " + status)
     return all_good
 
 

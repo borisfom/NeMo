@@ -145,16 +145,12 @@ def nemo_export(argv):
         if args.autocast:
             autocast = torch.cuda.amp.autocast
         with autocast(), torch.inference_mode():
-            logging.info(f"Getting output example")
-            input_list, input_dict = parse_input_example(input_example)
-            output_example = forward_method(model)(*input_list, **input_dict)
             logging.info(f"Exporting model with autocast={args.autocast}")
             input_names = model.input_names
             output_names = model.output_names
-
             _, descriptions = model.export(
                 out,
-                check_trace=False,
+                check_trace=args.runtime_check,
                 input_example=input_example,
                 onnx_opset_version=args.onnx_opset,
                 verbose=args.verbose,
@@ -169,10 +165,6 @@ def nemo_export(argv):
         raise e
 
     logging.info("Successfully exported to {}".format(out))
-
-    if args.runtime_check:
-        verify_runtime(out, input_list, input_dict, input_names, output_names, output_example)
-
 
 if __name__ == '__main__':
     nemo_export(sys.argv[1:])

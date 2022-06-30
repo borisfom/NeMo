@@ -153,6 +153,7 @@ def nemo_export(argv):
                 check_trace=args.runtime_check,
                 input_example=input_example,
                 onnx_opset_version=args.onnx_opset,
+                export_modules_as_functions=False,
                 verbose=args.verbose,
             )
 

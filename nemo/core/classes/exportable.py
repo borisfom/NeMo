@@ -61,6 +61,7 @@ class Exportable(ABC):
         use_dynamic_axes: bool = True,
         dynamic_axes=None,
         check_tolerance=0.01,
+        export_modules_as_functions=False
     ):
         my_args = locals().copy()
         my_args.pop('self')
@@ -77,7 +78,7 @@ class Exportable(ABC):
         # Pytorch's default for None is too low, can't pass None through
         if onnx_opset_version is None:
             onnx_opset_version = 13
-
+        
         try:
             # Disable typechecks
             typecheck.set_typecheck_enabled(enabled=False)
@@ -149,6 +150,7 @@ class Exportable(ABC):
                         do_constant_folding=do_constant_folding,
                         dynamic_axes=dynamic_axes,
                         opset_version=onnx_opset_version,
+                        export_modules_as_functions=export_modules_as_functions,
                     )
 
                     if check_trace:
@@ -156,7 +158,8 @@ class Exportable(ABC):
                         verify_runtime(self, output,
                                        [self.input_module.input_example(max_dim=333),
                                         self.input_module.input_example(max_dim=777),
-                                        self.input_module.input_example(max_dim=1111)]
+                                        self.input_module.input_example(max_dim=1111)],
+                                       input_names
                         )
 
                 else:

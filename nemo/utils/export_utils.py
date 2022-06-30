@@ -100,18 +100,20 @@ def parse_input_example(input_example):
     return input_list, input_dict
 
 
-def to_onnxrt_input(input_names, input_dict, input_list):
+def to_onnxrt_input(ort_input_names, input_names, input_dict, input_list):
     odict = {}
     for k in reversed(input_names):
         if k in input_dict:
-            odict[k] = input_dict[k].cpu().numpy()
+            val = input_dict[k].cpu().numpy()
         else:
-            odict[k] = input_list.pop().cpu().numpy()
+            val = input_list.pop().cpu().numpy()
+        if k in ort_input_names:
+            odict[k] = val
     return odict
 
-def verify_runtime(model, output, input_examples, check_tolerance=0.01):
+def verify_runtime(model, output, input_examples, input_names, check_tolerance=0.01):
     onnx_model = onnx.load(output)
-    input_names = [node.name for node in onnx_model.graph.input]
+    ort_input_names = [node.name for node in onnx_model.graph.input]
 
     global ort_available
     if not ort_available:
@@ -128,7 +130,7 @@ def verify_runtime(model, output, input_examples, check_tolerance=0.01):
     for input_example in input_examples:
         input_list, input_dict = parse_input_example(input_example)
         output_example = model.forward(*input_list, **input_dict)
-        ort_input=to_onnxrt_input(input_names, input_dict, input_list)
+        ort_input=to_onnxrt_input(ort_input_names, input_names, input_dict, input_list)
         all_good = all_good and run_ort_and_compare(sess, ort_input, output_example, check_tolerance)
     status = "SUCCESS" if all_good else "FAIL"
     logging.info(f"ONNX generated at {output} verified with onnxruntime : " + status)

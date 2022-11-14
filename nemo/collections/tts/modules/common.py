@@ -198,6 +198,7 @@ class ConvLSTMLinear(BiLSTM):
     def masked_conv_to_sequence(self, context: Tensor, lens: Tensor, enforce_sorted: bool = False) -> PackedSequence:
         mask = get_mask_from_lengths_and_val(lens, context)
         mask = mask.unsqueeze(1)
+        context = torch.mul(context, mask)
         for conv in self.convolutions:
             context = self.dropout(F.relu(conv(context, mask)))
         context = torch.mul(context, mask)

@@ -126,9 +126,7 @@ class Exportable(ABC):
             forward_method, old_forward_method = wrap_forward_method(self)
 
             # Set module mode
-            with torch.onnx.select_model_mode_for_export(
-                self, training
-            ), torch.inference_mode(), torch.no_grad(), torch.jit.optimized_execution(True), _jit_is_scripting():
+            with torch.inference_mode(), torch.no_grad(), _jit_is_scripting():
 
                 if input_example is None:
                     input_example = self.input_module.input_example()

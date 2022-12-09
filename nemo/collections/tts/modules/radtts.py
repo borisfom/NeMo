@@ -589,7 +589,8 @@ class RadTTSModule(NeuralModule, Exportable):
     ):
 
         batch_size = text.shape[0]
-        n_tokens = text.shape[1]
+        n_tokens = torch.max(in_lens)
+        text = text.narrow(-1, 0, n_tokens)
         spk_vec = self.encode_speaker(speaker_id)
         if speaker_id_text is None:
             speaker_id_text = speaker_id
@@ -597,6 +598,7 @@ class RadTTSModule(NeuralModule, Exportable):
             speaker_id_attributes = speaker_id
         spk_vec_text = self.encode_speaker(speaker_id_text)
         spk_vec_attributes = self.encode_speaker(speaker_id_attributes)
+
         txt_enc, _ = self.encode_text(text, in_lens)
 
         if dur is None:
@@ -771,7 +773,7 @@ class RadTTSModule(NeuralModule, Exportable):
         par = next(self.parameters())
         sz = (max_batch, max_dim)
         inp = torch.randint(16, 32, sz, device=par.device, dtype=torch.int64)
-        lens = torch.randint(max_dim // 4, max_dim // 2, (max_batch,), device=par.device, dtype=torch.int)
+        lens = torch.randint(max_dim // 2, max_dim, (max_batch,), device=par.device, dtype=torch.int)
         speaker = torch.randint(0, 1, (max_batch,), device=par.device, dtype=torch.int64)
         inputs = {
             'text': inp,

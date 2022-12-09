@@ -132,12 +132,13 @@ class BiLSTM(nn.Module):
 
     def forward(self, context: Tensor, lens: Tensor) -> Tensor:
         context, lens_sorted, unsort_ids = sort_tensor(context, lens)
-        dtype = context.dtype
         # this is only needed for Torchscript to run in Triton
         # (https://github.com/pytorch/pytorch/issues/89241)
+        dtype = context.dtype
         with torch.cuda.amp.autocast(enabled=False):
-            ret = self.lstm_tensor(context.to(dtype=torch.float32), lens_sorted, enforce_sorted=True)
-        return ret[0].to(dtype=dtype)[unsort_ids]
+            ret, _ = self.lstm_tensor(context.to(dtype=torch.float32), lens_sorted, enforce_sorted=True)
+        ret = ret.to(dtype=dtype)
+        return ret[unsort_ids]
 
 
 class ConvLSTMLinear(nn.Module):
@@ -230,26 +231,26 @@ class Invertible1x1ConvLUS(torch.nn.Module):
         self.upper_diag = nn.Parameter(torch.diag(upper))
         self.upper = nn.Parameter(torch.triu(upper, 1))
 
-    @amp.autocast(False)
     def forward(self, z, inverse=False):
-        U = torch.triu(self.upper, 1) + torch.diag(self.upper_diag)
-        L = torch.tril(self.lower, -1) + torch.diag(self.lower_diag)
-        W = torch.mm(self.p, torch.mm(L, U))
-        if inverse:
-            if not hasattr(self, 'W_inverse'):
-                # inverse computation
-                W_inverse = W.float().inverse()
-                if z.type() == 'torch.cuda.HalfTensor':
-                    W_inverse = W_inverse.half()
+        with torch.cuda.amp.autocast(enabled=False):
+            U = torch.triu(self.upper, 1) + torch.diag(self.upper_diag)
+            L = torch.tril(self.lower, -1) + torch.diag(self.lower_diag)
+            W = torch.mm(self.p, torch.mm(L, U))
+            if inverse:
+                if not hasattr(self, 'W_inverse'):
+                    # inverse computation
+                    W_inverse = W.float().inverse()
+                    if W.dtype == torch.float16:
+                        W_inverse = W_inverse.half()
 
-                self.W_inverse = W_inverse[..., None]
-            z = F.conv1d(z, self.W_inverse, bias=None, stride=1, padding=0)
-            return z
-        else:
-            W = W[..., None]
-            z = F.conv1d(z, W, bias=None, stride=1, padding=0)
-            log_det_W = torch.sum(torch.log(torch.abs(self.upper_diag)))
-            return z, log_det_W
+                    self.W_inverse = W_inverse[..., None]
+                z = F.conv1d(z, self.W_inverse, bias=None, stride=1, padding=0)
+                return z
+            else:
+                W = W[..., None]
+                z = F.conv1d(z, W, bias=None, stride=1, padding=0)
+                log_det_W = torch.sum(torch.log(torch.abs(self.upper_diag)))
+                return z, log_det_W
 
 
 class Invertible1x1Conv(torch.nn.Module):
@@ -280,7 +281,7 @@ class Invertible1x1Conv(torch.nn.Module):
             if not hasattr(self, 'W_inverse'):
                 # Inverse computation
                 W_inverse = W.float().inverse()
-                if z.type() == 'torch.cuda.HalfTensor':
+                if W.dtype == torch.float16:
                     W_inverse = W_inverse.half()
 
                 self.W_inverse = W_inverse[..., None]

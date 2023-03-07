@@ -588,6 +588,7 @@ class ConformerEncoder(NeuralModule, StreamingEncoder, Exportable, AccessMixin):
             audio_signal, length = self.reduction_subsampling(x=audio_signal, lengths=length)
 
         audio_signal = torch.transpose(audio_signal, 1, 2)
+        length = length.to(dtype=torch.int64)
 
         if cache_last_channel is not None:
             return (

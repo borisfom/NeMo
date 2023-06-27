@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging as _logging
 from abc import ABC
 from typing import List, Union
 
 import torch
 from pytorch_lightning.core.module import _jit_is_scripting
+from torch.onnx import ExportOptions, ExportOutput, dynamo_export
 
 from nemo.core.classes import typecheck
 from nemo.core.utils.neural_type_utils import get_dynamic_axes, get_io_names
@@ -152,6 +154,7 @@ class Exportable(ABC):
 
         exportables = []
         for m in self.modules():
+            m.is_exporting = True
             if isinstance(m, Exportable):
                 exportables.append(m)
 
@@ -213,6 +216,12 @@ class Exportable(ABC):
                     if check_trace:
                         verify_torchscript(jitted_model, output, check_trace_input, check_tolerance)
                 elif format == ExportFormat.ONNX:
+                    export_options = ExportOptions(
+                        opset_version=17, logger=_logging.getLogger(), dynamic_shapes=False,  # True,
+                    )
+                    exp_result = dynamo_export(jitted_model, *input_example, export_options=export_options)
+                    exp_result.save(output)
+                else:  # if format == ExportFormat.ONNX:
                     # dynamic axis is a mapping from input/output_name => list of "dynamic" indices
                     if dynamic_axes is None:
                         dynamic_axes = get_dynamic_axes(self.input_module.input_types_for_export, input_names)
@@ -233,8 +242,8 @@ class Exportable(ABC):
 
                     if check_trace:
                         verify_runtime(self, output, check_trace_input, input_names, check_tolerance=check_tolerance)
-                else:
-                    raise ValueError(f'Encountered unknown export format {format}.')
+                # else:
+                #    raise ValueError(f'Encountered unknown export format {format}.')
         finally:
             typecheck.set_typecheck_enabled(enabled=True)
             if forward_method:

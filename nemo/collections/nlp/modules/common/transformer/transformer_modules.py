@@ -58,25 +58,25 @@ class FixedPositionalEncoding(nn.Module):
         self.register_buffer('pos_enc', pos_enc)
 
     def forward(self, position_ids):
-        max_pos_id = position_ids.max()
-        # update positional encoding if needed
-        if max_pos_id >= self._max_sequence_length:
-            logging.warning(
-                f'Max position id {max_pos_id} is greater than max sequence length {self._max_sequence_length}. Expanding position embeddings just for this batch. This is not expected to work very well. Consider chunking your input into smaller sequences.'
-            )
-            self._build_pos_enc(
-                hidden_size=self._hidden_size, max_sequence_length=max_pos_id + 1, device=position_ids.device,
-            )
+        if getattr(self, 'is_exporting', False):
+            saved_pos_enc = None
+        else:
+            max_pos_id = position_ids.max()
+            # update positional encoding if needed
+            if max_pos_id >= self._max_sequence_length:
+                logging.warning(
+                    f'Max position id {max_pos_id} is greater than max sequence length {self._max_sequence_length}. Expanding position embeddings just for this batch. This is not expected to work very well. Consider chunking your input into smaller sequences.'
+                )
+                saved_pos_enc = self.pos_enc
+                self._build_pos_enc(
+                    hidden_size=self._hidden_size, max_sequence_length=max_pos_id + 1, device=position_ids.device,
+                )
 
         embeddings = torch.embedding(self.pos_enc, position_ids)
 
-        # Revert expansion of position embeddings since this wall checkpoint size mismatches.
-        if max_pos_id >= self._max_sequence_length:
-            self._build_pos_enc(
-                hidden_size=self._hidden_size,
-                max_sequence_length=self._max_sequence_length,
-                device=position_ids.device,
-            )
+        # Revert expansion of position embeddings since this will cause checkpoint size mismatches.
+        if saved_pos_enc is not None:
+            self.pos_enc = saved_pos_enc
         return embeddings
 
 
@@ -119,18 +119,19 @@ class TransformerEmbedding(nn.Module):
             self.token_type_embedding = nn.Embedding(num_token_types, hidden_size)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-5)
         self.dropout = nn.Dropout(embedding_dropout)
+        pos_range = torch.arange(max_sequence_length * 2, dtype=torch.long)
+        self.register_buffer('pos_range', pos_range, persistent=False)
 
     def forward(self, input_ids, token_type_ids=None, start_pos=0):
         seq_length = input_ids.size(1)
-        # we fail here only with parametric positional embedding. FixedPositionalEncoding automatically extends.
-        if self.learn_positional_encodings and (seq_length > self.max_sequence_length):
-            raise ValueError(
-                f"Input sequence is longer than maximum allowed sequence length for positional encoding. "
-                f"Got {seq_length} and {self.max_sequence_length}"
-            )
-        position_ids = torch.arange(
-            start=start_pos, end=start_pos + seq_length, dtype=torch.long, device=input_ids.device
-        )
+        if not getattr(self, 'is_exporting', False):
+            # we fail here only with parametric positional embedding. FixedPositionalEncoding automatically extends.
+            if self.learn_positional_encodings and (seq_length > self.max_sequence_length):
+                raise ValueError(
+                    f"Input sequence is longer than maximum allowed sequence length for positional encoding. "
+                    f"Got {seq_length} and {self.max_sequence_length}"
+                )
+        position_ids = self.pos_range[:seq_length].to(device=input_ids.device) + start_pos
         position_ids = position_ids.unsqueeze(0).repeat(input_ids.size(0), 1)
 
         token_embeddings = self.token_embedding(input_ids)

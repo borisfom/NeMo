@@ -259,7 +259,7 @@ def unroll_input(input_names, input_example):
     """
     unrolled_input = {}
     for name in input_names:
-        val = input_example[name]
+        val = input_example.get(name, None)
         if val is not None:
             if isinstance(val, list) or isinstance(val, tuple):
                 for i in range(len(val)):
@@ -343,7 +343,8 @@ class TrtCompiler:
         use_cuda_graph=False,
         timestamp=None,
         fallback=False,
-        forward_override=None,
+        function="forward",
+        skip_once_registry=None,
         logger=None,
     ):
         """
@@ -380,6 +381,11 @@ class TrtCompiler:
         if precision not in precision_vals:
             raise ValueError(f"trt_compile(): 'precision' should be one of {precision_vals}, got: {precision}.")
 
+        if skip_once_registry:
+            if not fallback:
+                raise ValueError(f"trt_compile(): skip_once functionality requires fallback")
+            skip_once_registry.register_skip_once(self)
+
         self.plan_path = plan_path
         self.precision = precision
         self.method = method
@@ -393,6 +399,7 @@ class TrtCompiler:
         self.engine: TRTEngine | None = None
         self.use_cuda_graph = use_cuda_graph
         self.fallback = fallback
+        self.skip_once = False
         self.disabled = False
 
         self.logger = logger or getLogger("trt_compile")
@@ -409,7 +416,8 @@ class TrtCompiler:
                     self.defaults[self.argspec.args[-i - 1]] = d
 
         self.input_names = input_names
-        self.old_forward = model.forward
+        self.orig_function = getattr(model, function)
+        setattr(model, function, MethodType(trt_forward, model))
 
         # Force engine rebuild if older than the timestamp
         if timestamp is not None and os.path.exists(self.plan_path) and os.path.getmtime(self.plan_path) < timestamp:
@@ -452,6 +460,12 @@ class TrtCompiler:
         Returns: Passing through wrapped module's forward() return value(s)
 
         """
+
+        # Let the caches be filled
+        if self.skip_once:
+            self.skip_once = False
+            return self.orig_function(*argv, **kwargs)
+
         args = self.defaults
         args.update(kwargs)
         if len(argv) > 0:
@@ -460,7 +474,7 @@ class TrtCompiler:
         if self.engine is None and not self.disabled:
             # Restore original forward for export
             new_forward = model.forward
-            model.forward = self.old_forward
+            model.forward = self.orig_function
             try:
                 self._load_engine()
                 if self.engine is None:
@@ -509,7 +523,7 @@ class TrtCompiler:
                 self.logger.info(f"Exception: {e}\nFalling back to Pytorch ...")
             else:
                 raise e
-        return self.old_forward(*argv, **kwargs)
+        return self.orig_function(*argv, **kwargs)
 
     def _onnx_to_trt(self, onnx_path):
         """
@@ -548,8 +562,8 @@ class TrtCompiler:
         export_args = self.export_args
         engine_bytes = None
 
-        add_casts_around_norms(model)
-        replace_for_export(model)
+        # add_casts_around_norms(model)
+        # replace_for_export(model)
 
         if self.method == "torch_trt":
             enabled_precisions = [torch.float32]
@@ -603,11 +617,14 @@ class TrtCompiler:
 
             # Use temporary directory for easy cleanup in case of external weights
             with tempfile.TemporaryDirectory() as tmpdir:
+                post_proc = export_args.pop("postprocess", None)
                 if export_args.get("dynamo", False):
                     input_names = None
                 else:
                     input_names = list(unroll_input(self.input_names, input_example).keys())
-                onnx_path = str(Path(tmpdir) / "model.onnx")
+
+                # onnx_path = str(Path(tmpdir) / "model.onnx")
+                onnx_path = "model.onnx"
                 self.logger.info(
                     f"Exporting to {onnx_path}:\n"
                     + f"output_names={self.output_names}\ninput_names={self.input_names}\nexport args: {export_args}"
@@ -624,6 +641,8 @@ class TrtCompiler:
                     from polygraphy.backend.onnx.loader import fold_constants, onnx_from_path, save_onnx
 
                     onnx_model = fold_constants(onnx_from_path(onnx_path), size_threshold=16 * 1000 * 1000)
+                    if post_proc:
+                        onnx_model = post_proc(onnx_model)
                     save_onnx(onnx_model, onnx_path)
                 self.logger.info("Export to ONNX successful.")
                 engine_bytes = self._onnx_to_trt(onnx_path)
@@ -637,6 +656,14 @@ def trt_forward(self, *argv, **kwargs):
     Redirects to TrtCompiler.forward()
     """
     return self._trt_compiler.forward(self, argv, kwargs)
+
+
+def trt_registry_forward(self, *argv, **kwargs):
+    """
+    Patch function to replace original model's forward() with.
+    Redirects to TrtCompilerRegistry.forward()
+    """
+    return self._trt_compiler_registry.forward(self, argv, kwargs)
 
 
 def trt_compile(
@@ -712,3 +739,39 @@ def trt_compile(
         logger.warning("TensorRT and/or polygraphy packages are not available! trt_compile() has no effect.")
 
     return model
+
+
+class TrtCompilerRegistry:
+    """
+    Add-on class to be applied to higher-level module in caching situations
+    Supports skip_once functionality by resetting registered sub-modules skip flags
+    so they can skip the first forward() call and let the caches be filled
+    """
+
+    def __init__(self, model, function="forward", logger=None):
+        self.logger = logger or getLogger("trt_compile")
+        self.orig_function = getattr(model, function)
+        setattr(model, function, MethodType(trt_registry_forward, model))
+        self.registry = []
+
+    def register_skip_once(self, c):
+        self.registry.append(c)
+
+    def reset_skip_once(self):
+        for c in self.registry:
+            c.skip_once = True
+
+    def forward(self, model, argv, kwargs):
+        self.reset_skip_once()
+        return self.orig_function(*argv, **kwargs)
+
+
+def trt_compile_make_registry(model, function="forward"):
+    """
+    Instruments model or submodule(s) with TrtCompilerRegistry and replaces its forward() with TRT registry hook.
+    """
+    if not hasattr(model, "_trt_compiler_registry"):
+        wrapper = TrtCompilerRegistry(model, function)
+        model._trt_compiler_registry = wrapper
+
+    return wrapper

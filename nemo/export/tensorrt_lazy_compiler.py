@@ -257,15 +257,29 @@ def unroll_input(input_names, input_example):
     """
     Simulates list/tuple unrolling during ONNX export
     """
+
+    def unroll_one(name, val):
+        res = {}
+        try:
+            if val is not None:
+                if isinstance(val, dict):
+                    for key, data in val.items():
+                        subname = f"{name}_{key}"
+                        vals = unroll_one(subname, data)
+                        res.update(vals)
+                elif isinstance(val, list) or isinstance(val, tuple):
+                    for i in range(len(val)):
+                        res.update(unroll_one(f"{name}_{i}", val[i]))
+                else:
+                    res[name] = make_tensor(val)
+        except Exception as e:
+            pass
+        return res
+
     unrolled_input = {}
     for name in input_names:
         val = input_example.get(name, None)
-        if val is not None:
-            if isinstance(val, list) or isinstance(val, tuple):
-                for i in range(len(val)):
-                    unrolled_input[f"{name}_{i}"] = make_tensor(val[i])
-            else:
-                unrolled_input[name] = make_tensor(val)
+        unrolled_input.update(unroll_one(name, val))
     return unrolled_input
 
 
@@ -464,6 +478,7 @@ class TrtCompiler:
         # Let the caches be filled
         if self.skip_once:
             self.skip_once = False
+            print("Skipping once...")
             return self.orig_function(*argv, **kwargs)
 
         args = self.defaults
@@ -520,7 +535,7 @@ class TrtCompiler:
                     return ret
         except Exception as e:
             if self.fallback:
-                self.logger.info(f"Exception: {e}\nFalling back to Pytorch ...")
+                print(f"Exception: {e}\nFalling back to Pytorch ...")
             else:
                 raise e
         return self.orig_function(*argv, **kwargs)
@@ -640,7 +655,7 @@ class TrtCompiler:
                 if polygraphy_imported:
                     from polygraphy.backend.onnx.loader import fold_constants, onnx_from_path, save_onnx
 
-                    onnx_model = fold_constants(onnx_from_path(onnx_path), size_threshold=16 * 1000 * 1000)
+                    onnx_model = fold_constants(onnx_from_path(onnx_path), size_threshold=64 * 1000 * 1000)
                     if post_proc:
                         onnx_model = post_proc(onnx_model)
                     save_onnx(onnx_model, onnx_path)

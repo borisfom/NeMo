@@ -459,7 +459,6 @@ class TrtCompiler:
                     orig_name = name
                 input_table[name] = orig_name
             self.engine.input_table = input_table
-            self.logger.info(f"Engine loaded, inputs:{self.engine.input_table}")
         except Exception as e:
             self.logger.info(f"Exception while loading the engine:\n{e}")
 
@@ -478,7 +477,7 @@ class TrtCompiler:
         # Let the caches be filled
         if self.skip_once:
             self.skip_once = False
-            print("Skipping once...")
+            self.logger.info("Skipping once...")
             return self.orig_function(*argv, **kwargs)
 
         args = self.defaults
@@ -535,7 +534,7 @@ class TrtCompiler:
                     return ret
         except Exception as e:
             if self.fallback:
-                print(f"Exception: {e}\nFalling back to Pytorch ...")
+                self.logger.debug(f"Exception: {e}\nFalling back to Pytorch ...")
             else:
                 raise e
         return self.orig_function(*argv, **kwargs)
@@ -544,7 +543,7 @@ class TrtCompiler:
         """
         Builds TRT engine from ONNX file at onnx_path and saves to self.plan_path
         """
-
+        torch.cuda.empty_cache()
         profiles = []
         for profile in self.profiles:
             p = Profile()
@@ -579,6 +578,7 @@ class TrtCompiler:
 
         # add_casts_around_norms(model)
         # replace_for_export(model)
+        torch.cuda.empty_cache()
 
         if self.method == "torch_trt":
             enabled_precisions = [torch.float32]
